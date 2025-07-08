@@ -238,7 +238,7 @@ def _highest_density_interval_array(samples_arr, alpha=0.05):
     return samples_sorted[best_start], samples_sorted[best_start + window_size - 1]
 
 
-def highest_density_interval(samples, alpha=0.05):
+def highest_density_interval(samples, alpha=0.05) -> tuple:
     """Return the highest-density interval containing a (1-alpha) fraction of the samples."""
     samples_arr = np.asarray(samples, dtype=np.float64)
     return _highest_density_interval_array(samples_arr, alpha)
