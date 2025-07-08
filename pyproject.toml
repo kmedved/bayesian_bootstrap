@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bayesian_bootstrap"
+version = "2.0.0"
+authors = [
+  { name="Louis Cialdella", email="louiscialdella@gmail.com" },
+]
+description = "Bayesian Bootstrapping for statistics and regression models"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = [
+    "numpy>=1.21",
+    "scipy",
+    "numba",
+    "joblib",
+    "scikit-learn"
+]
+
+[project.urls]
+Homepage = "https://github.com/lmc2179/bayesian_bootstrap"
