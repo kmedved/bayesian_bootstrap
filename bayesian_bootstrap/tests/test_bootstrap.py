@@ -41,19 +41,19 @@ class TestMoments(unittest.TestCase):
 
     def test_mean_resample(self):
         X = [-1, 0, 1]
-        posterior_samples = bayesian_bootstrap(X, np.mean, 10000, 100, low_mem=True)
+        posterior_samples = bayesian_bootstrap(X, np.mean, 10000, 100)
         self.assertAlmostEqual(np.mean(posterior_samples), 0, delta=0.01)
         self.assertAlmostEqual(len([s for s in posterior_samples if s < 0]), 5000, delta=1000)
-        posterior_samples = bayesian_bootstrap(X, np.mean, 10000, 100, low_mem=False)
+        posterior_samples = bayesian_bootstrap(X, np.mean, 10000, 100)
         self.assertAlmostEqual(np.mean(posterior_samples), 0, delta=0.01)
         self.assertAlmostEqual(len([s for s in posterior_samples if s < 0]), 5000, delta=1000)
 
     def test_var_resample(self):
         X = RNG.uniform(-1, 1, 500)
-        posterior_samples = bayesian_bootstrap(X, np.var, 10000, 5000, low_mem=True)
+        posterior_samples = bayesian_bootstrap(X, np.var, 10000, 5000)
         self.assertAlmostEqual(np.mean(posterior_samples), 1 / 3.0, delta=0.05)
         X = RNG.uniform(-1, 1, 500)
-        posterior_samples = bayesian_bootstrap(X, np.var, 10000, 5000, low_mem=False)
+        posterior_samples = bayesian_bootstrap(X, np.var, 10000, 5000)
         self.assertAlmostEqual(np.mean(posterior_samples), 1 / 3.0, delta=0.05)
 
 
@@ -70,10 +70,10 @@ class TestIntervals(unittest.TestCase):
         self.assertEqual(r, 18.05)
 
     def test_hpdi(self):
-        l, r = highest_density_interval(self._shuffle([0, 10, 1] + [1.1] * 7), alpha=0.2)
+        l, r = highest_density_interval(np.array(self._shuffle([0, 10, 1] + [1.1] * 7)), alpha=0.2)
         self.assertEqual(l, 1)
         self.assertEqual(r, 1.1)
-        l, r = highest_density_interval(self._shuffle([0, 10, 1.1, 1]), alpha=0.5)
+        l, r = highest_density_interval(np.array(self._shuffle([0, 10, 1.1, 1])), alpha=0.5)
         self.assertEqual(l, 1)
         self.assertEqual(r, 1.1)
 
@@ -87,7 +87,7 @@ class TestRegression(unittest.TestCase):
     def test_parameter_estimation_resampling_low_memory(self):
         X = RNG.uniform(0, 4, 1000)
         y = X + RNG.normal(0, 1, 1000)
-        m = BayesianBootstrapBagging(LinearRegression(), 10000, 1000, low_mem=True)
+        m = BayesianBootstrapBagging(LinearRegression(), 10000, 1000)
         m.fit(X.reshape(-1, 1), y)
         coef_samples = [b.coef_ for b in m.base_models_]
         intercept_samples = [b.intercept_ for b in m.base_models_]
@@ -95,7 +95,7 @@ class TestRegression(unittest.TestCase):
         l, r = central_credible_interval(coef_samples, alpha=0.05)
         self.assertLess(l, 1)
         self.assertGreater(r, 1)
-        l, r = highest_density_interval(coef_samples, alpha=0.05)
+        l, r = highest_density_interval(np.array(coef_samples).ravel(), alpha=0.05)
         self.assertLess(l, 1)
         self.assertGreater(r, 1)
         self.assertAlmostEqual(np.mean(intercept_samples), 0, delta=0.3)
@@ -103,14 +103,14 @@ class TestRegression(unittest.TestCase):
         self.assertLess(l, 0)
         self.assertGreater(r, 0)
         self.assertAlmostEqual(np.mean(intercept_samples), 0, delta=0.3)
-        l, r = highest_density_interval(intercept_samples, alpha=0.05)
+        l, r = highest_density_interval(np.array(intercept_samples), alpha=0.05)
         self.assertLess(l, 0)
         self.assertGreater(r, 0)
 
     def test_parameter_estimation_resampling(self):
         X = RNG.uniform(0, 4, 1000)
         y = X + RNG.normal(0, 1, 1000)
-        m = BayesianBootstrapBagging(LinearRegression(), 10000, 1000, low_mem=False)
+        m = BayesianBootstrapBagging(LinearRegression(), 10000, 1000)
         m.fit(X.reshape(-1, 1), y)
         coef_samples = [b.coef_ for b in m.base_models_]
         intercept_samples = [b.intercept_ for b in m.base_models_]
@@ -118,7 +118,7 @@ class TestRegression(unittest.TestCase):
         l, r = central_credible_interval(coef_samples, alpha=0.05)
         self.assertLess(l, 1)
         self.assertGreater(r, 1)
-        l, r = highest_density_interval(coef_samples, alpha=0.05)
+        l, r = highest_density_interval(np.array(coef_samples).ravel(), alpha=0.05)
         self.assertLess(l, 1)
         self.assertGreater(r, 1)
         self.assertAlmostEqual(np.mean(intercept_samples), 0, delta=0.3)
@@ -126,14 +126,14 @@ class TestRegression(unittest.TestCase):
         self.assertLess(l, 0)
         self.assertGreater(r, 0)
         self.assertAlmostEqual(np.mean(intercept_samples), 0, delta=0.3)
-        l, r = highest_density_interval(intercept_samples, alpha=0.05)
+        l, r = highest_density_interval(np.array(intercept_samples), alpha=0.05)
         self.assertLess(l, 0)
         self.assertGreater(r, 0)
 
     def test_parameter_estimation_bayes(self):
         X = RNG.uniform(0, 4, 1000)
         y = X + RNG.normal(0, 1, 1000)
-        m = BayesianBootstrapBagging(LinearRegression(), 10000, low_mem=False)
+        m = BayesianBootstrapBagging(LinearRegression(), 10000)
         m.fit(X.reshape(-1, 1), y)
         coef_samples = [b.coef_ for b in m.base_models_]
         intercept_samples = [b.intercept_ for b in m.base_models_]
@@ -141,7 +141,7 @@ class TestRegression(unittest.TestCase):
         l, r = central_credible_interval(coef_samples, alpha=0.05)
         self.assertLess(l, 1)
         self.assertGreater(r, 1)
-        l, r = highest_density_interval(coef_samples, alpha=0.05)
+        l, r = highest_density_interval(np.array(coef_samples).ravel(), alpha=0.05)
         self.assertLess(l, 1)
         self.assertGreater(r, 1)
         self.assertAlmostEqual(np.mean(intercept_samples), 0, delta=0.3)
@@ -149,14 +149,14 @@ class TestRegression(unittest.TestCase):
         self.assertLess(l, 0)
         self.assertGreater(r, 0)
         self.assertAlmostEqual(np.mean(intercept_samples), 0, delta=0.3)
-        l, r = highest_density_interval(intercept_samples, alpha=0.05)
+        l, r = highest_density_interval(np.array(intercept_samples), alpha=0.05)
         self.assertLess(l, 0)
         self.assertGreater(r, 0)
 
     def test_parameter_estimation_bayes_low_memory(self):
         X = RNG.uniform(0, 4, 1000)
         y = X + RNG.normal(0, 1, 1000)
-        m = BayesianBootstrapBagging(LinearRegression(), 10000, low_mem=True)
+        m = BayesianBootstrapBagging(LinearRegression(), 10000)
         m.fit(X.reshape(-1, 1), y)
         coef_samples = [b.coef_ for b in m.base_models_]
         intercept_samples = [b.intercept_ for b in m.base_models_]
@@ -164,7 +164,7 @@ class TestRegression(unittest.TestCase):
         l, r = central_credible_interval(coef_samples, alpha=0.05)
         self.assertLess(l, 1)
         self.assertGreater(r, 1)
-        l, r = highest_density_interval(coef_samples, alpha=0.05)
+        l, r = highest_density_interval(np.array(coef_samples).ravel(), alpha=0.05)
         self.assertLess(l, 1)
         self.assertGreater(r, 1)
         self.assertAlmostEqual(np.mean(intercept_samples), 0, delta=0.3)
@@ -172,7 +172,7 @@ class TestRegression(unittest.TestCase):
         self.assertLess(l, 0)
         self.assertGreater(r, 0)
         self.assertAlmostEqual(np.mean(intercept_samples), 0, delta=0.3)
-        l, r = highest_density_interval(intercept_samples, alpha=0.05)
+        l, r = highest_density_interval(np.array(intercept_samples), alpha=0.05)
         self.assertLess(l, 0)
         self.assertGreater(r, 0)
 
