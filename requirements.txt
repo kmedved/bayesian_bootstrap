@@ -2,3 +2,5 @@ numpy>=1.22.1
 scipy>=1.7.3
 scikit-learn>=1.0.2
 tqdm>=4.62.3
+numba>=0.58.0
+joblib>=1.2.0
