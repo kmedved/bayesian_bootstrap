@@ -278,7 +278,7 @@ def central_credible_interval(samples, alpha=0.05):
     return np.quantile(samples, alpha / 2), np.quantile(samples, 1 - alpha / 2)
 
 
-def highest_density_interval(samples, alpha=0.05):
+def highest_density_interval(samples, alpha=0.05) -> tuple:
     """The highest-density interval containing a (1-alpha) fraction of the posterior samples.
 
     Parameter samples: The posterior samples (array like)
@@ -291,7 +291,7 @@ def highest_density_interval(samples, alpha=0.05):
     window_size = int(len(samples) - round(len(samples) * alpha))
     smallest_window = (None, None)
     smallest_window_length = float("inf")
-    for i in range(len(samples_sorted) - window_size):
+    for i in range(len(samples_sorted) - window_size + 1):
         window = samples_sorted[i + window_size - 1], samples_sorted[i]
         window_length = samples_sorted[i + window_size - 1] - samples_sorted[i]
         if window_length < smallest_window_length:
