@@ -17,36 +17,45 @@ def mean(X, n_replications, seed=None):
     return X @ weights.T
 
 
-def var(X, n_replications, seed=None):
-    """Simulate the posterior distribution of the variance."""
-    rng = _get_rng(seed)
-    weights = rng.dirichlet(np.ones(len(X)), n_replications)
-    # Vectorized calculation of variance: E[X^2] - (E[X])^2
+def var(X, n_replications, seed=None) -> np.ndarray:
+    """Simulate the posterior distribution of the variance. (Vectorized for speed)"""
+    rng = np.random.default_rng(seed)
+    weights = rng.dirichlet(np.ones(len(X)), n_replications).T  # Shape (n_samples, n_replications)
     X = np.asarray(X)
     X_squared = np.square(X)
-    weighted_X_squared = X_squared @ weights.T
-    weighted_X = X @ weights.T
+    weighted_X_squared = X_squared @ weights
+    weighted_X = X @ weights
     return weighted_X_squared - np.square(weighted_X)
 
 
-def covar(X, Y, n_replications, seed=None):
-    """Simulate the posterior distribution of the covariance."""
-    rng = _get_rng(seed)
-    # Transpose weights so columns correspond to replications
+def _weighted_covariance(X, Y, weights: np.ndarray) -> np.ndarray:
+    """Helper for vectorized covariance."""
+    weighted_X = X @ weights
+    weighted_Y = Y @ weights
+    weighted_XY = (X * Y) @ weights
+    return weighted_XY - (weighted_X * weighted_Y)
+
+
+def covar(X, Y, n_replications, seed=None) -> np.ndarray:
+    """Simulate the posterior distribution of the covariance. (Vectorized for speed)"""
+    rng = np.random.default_rng(seed)
     weights = rng.dirichlet(np.ones(len(X)), n_replications).T
-    return _weighted_covariance(np.asarray(X), np.asarray(Y), weights)
+    X = np.asarray(X)
+    Y = np.asarray(Y)
+    return _weighted_covariance(X, Y, weights)
 
 
-def pearsonr(X, Y, n_replications, seed=None):
-    """
-    Pearson correlation coefficient and p-value for testing non-correlation.
-
-    https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.pearsonr.html
-
-    """
-    rng = _get_rng(seed)
+def pearsonr(X, Y, n_replications, seed=None) -> np.ndarray:
+    """Simulate the posterior of the Pearson correlation. (Vectorized for speed)."""
+    rng = np.random.default_rng(seed)
     weights = rng.dirichlet(np.ones(len(X)), n_replications).T
-    return _weighted_pearsonr(np.asarray(X), np.asarray(Y), weights)
+    X = np.asarray(X)
+    Y = np.asarray(Y)
+    cov_XY = _weighted_covariance(X, Y, weights)
+    var_X = _weighted_covariance(X, X, weights)
+    var_Y = _weighted_covariance(Y, Y, weights)
+    std_devs = np.sqrt(var_X * var_Y)
+    return np.divide(cov_XY, std_devs, out=np.full_like(cov_XY, np.nan), where=std_devs!=0)
 
 
 def _weighted_covariance(X, Y, weights):
@@ -57,53 +66,90 @@ def _weighted_covariance(X, Y, weights):
     weighted_XY = (X * Y) @ weights
     return weighted_XY - (weighted_X * weighted_Y)
 
+def _weighted_ls(X, y, w):
+    """
+    Solves weighted least squares problem using a more stable method.
+    w is a single weight vector for one replication.
+    """
+    sqrt_w = np.sqrt(w)
+    X_w = X * sqrt_w[:, np.newaxis]
+    y_w = y * sqrt_w
+    coeffs, _, _, _ = np.linalg.lstsq(X_w, y_w, rcond=None)
+    return coeffs
 
-def _weighted_pearsonr(X, Y, weights):
-    """Weighted Pearson correlation for multiple weight sets."""
-    cov_XY = _weighted_covariance(X, Y, weights)
-    var_X = _weighted_covariance(X, X, weights)
-    var_Y = _weighted_covariance(Y, Y, weights)
-    return cov_XY / np.sqrt(var_X * var_Y)
 
+def linear_regression(X, y, n_replications, seed=None, n_jobs=-1):
+    """Simulate the posterior of linear regression coefficients in parallel."""
+    from joblib import Parallel, delayed
+    rng = np.random.default_rng(seed)
+    weights = rng.dirichlet(np.ones(len(X)), n_replications)
 
-def _weighted_ls(X, w, y):
-    x_rows, x_cols = X.shape
-    w_matrix = np.array(w) * np.eye(x_rows)
-    coef = np.dot(
-        np.dot(np.dot(np.linalg.inv(np.dot(np.dot(X.T, w_matrix), X)), X.T), w_matrix),
-        y,
+    coef_samples = Parallel(n_jobs=n_jobs)(
+        delayed(_weighted_ls)(X, y, w) for w in weights
     )
-    return coef
-
-
-def linear_regression(X, y, n_replications, seed=None):
-    coef_samples = []
-    weights = np.random.default_rng(seed).dirichlet([1] * len(X), n_replications)
-    for w in weights:
-        coef_samples.append(_weighted_ls(X, w, y))
     return np.vstack(coef_samples)
 
 
-def bayesian_bootstrap(X, statistic, n_replications, resample_size, seed=None):
-    """Simulate the posterior distribution of the given statistic."""
+def bayesian_bootstrap_resample(X, statistic, n_replications, resample_size, low_mem=False, seed=None):
+    import warnings
+    warnings.warn(
+        "`bayesian_bootstrap_resample` is deprecated as it adds unnecessary variance. "
+        "Use the direct-weighting `bayesian_bootstrap` function instead where possible.",
+        DeprecationWarning
+    )
     if isinstance(X, list):
         X = np.array(X)
 
     samples = []
     rng = _get_rng(seed)
-    # generate all weights up front for efficiency
-    weights = rng.dirichlet(np.ones(len(X)), n_replications)
+    weights_iter = rng.dirichlet(np.ones(len(X)), n_replications)
+    if low_mem:
+        weights_iter = (rng.dirichlet(np.ones(len(X))) for _ in range(n_replications))
 
-    for i in range(n_replications):
+    for i, w in enumerate(weights_iter):
         choice_rng = _get_rng(seed + i if seed is not None else None)
-        sample_index = choice_rng.choice(len(X), p=weights[i], size=resample_size)
+        sample_index = choice_rng.choice(len(X), p=w, size=resample_size)
         resample_X = X[sample_index]
         s = statistic(resample_X)
         samples.append(s)
     return samples
 
 
+def bayesian_bootstrap(X, statistic, n_replications, alpha=1.0, seed=None, statistic_args=None):
+    """
+    Simulate the posterior distribution of a statistic using direct weighting.
+
+    Parameter X: The observed data (array-like).
+    Parameter statistic: A function that takes X and weights (and optional args)
+                       and returns the statistic. e.g., `np.average`.
+    Parameter n_replications: The number of bootstrap replications.
+    Parameter alpha: The concentration parameter for the Dirichlet distribution.
+                     Default is 1.0 (non-informative). Can be a scalar or a vector.
+    Parameter seed: Seed for the random number generator.
+    Parameter statistic_args: A dictionary of additional keyword arguments for the statistic function.
+
+    Returns: Samples from the posterior.
+    """
+    rng = np.random.default_rng(seed)
+    if isinstance(alpha, (int, float)):
+        alpha_prior = np.repeat(alpha, len(X))
+    else:
+        alpha_prior = np.asarray(alpha)
+
+    weights = rng.dirichlet(alpha_prior, n_replications)
+
+    if statistic_args is None:
+        statistic_args = {}
+
+    return statistic(X, weights=weights.T, **statistic_args)
+
+
 def bayesian_bootstrap_regression(X, y, statistic, n_replications, resample_size, low_mem=False, seed=None):
+    import warnings
+    warnings.warn(
+        "`bayesian_bootstrap_regression` is deprecated. Use the `BayesianBootstrapBagging` class instead.",
+        DeprecationWarning
+    )
     """Simulate the posterior distribution of a statistic that uses dependent and independent variables.
 
     Parameter X: The observed data, independent variables (matrix like)
@@ -154,22 +200,26 @@ class BayesianBootstrapBagging:
         self.seed = seed
 
     def _fit_single_model(self, X, y, seed):
-        rng = _get_rng(seed)
+        """Helper function to fit one bootstrapped model."""
+        rng = np.random.default_rng(seed)
         weights = rng.dirichlet(np.ones(len(X)))
-        if self.resample_size is None:
-            model = deepcopy(self.base_learner)
-            return model.fit(X, y, sample_weight=weights)
-        resample_i = rng.choice(len(X), p=weights, size=self.resample_size)
         model = deepcopy(self.base_learner)
-        return model.fit(X[resample_i], y[resample_i])
+
+        import inspect
+        fit_params = inspect.signature(model.fit).parameters
+
+        if self.resample_size is None and 'sample_weight' in fit_params:
+            return model.fit(X, y, sample_weight=weights)
+        else:
+            resample_i = rng.choice(len(X), p=weights, size=self.resample_size or len(X))
+            return model.fit(X[resample_i], y[resample_i])
 
     def fit(self, X, y):
-        """Fit the base learners of the ensemble on a dataset."""
+        """Fit the ensemble in parallel."""
+        from joblib import Parallel, delayed
+        seeds = (self.seed + i if self.seed is not None else None for i in range(self.n_replications))
         self.base_models_ = Parallel(n_jobs=self.n_jobs)(
-            delayed(self._fit_single_model)(
-                X, y, self.seed + i if self.seed is not None else None
-            )
-            for i in range(self.n_replications)
+            delayed(self._fit_single_model)(X, y, seed=s) for s in seeds
         )
         return self
 
@@ -179,7 +229,8 @@ class BayesianBootstrapBagging:
         return np.mean(y_posterior_samples, axis=1)
 
     def predict_posterior_samples(self, X):
-        """Simulate posterior samples for a collection of observations."""
+        """Simulate posterior samples in parallel."""
+        from joblib import Parallel, delayed
         predictions = Parallel(n_jobs=self.n_jobs)(
             delayed(m.predict)(X) for m in self.base_models_
         )
@@ -238,7 +289,7 @@ def _highest_density_interval_array(samples_arr, alpha=0.05):
     return samples_sorted[best_start], samples_sorted[best_start + window_size - 1]
 
 
-def highest_density_interval(samples, alpha=0.05):
+def highest_density_interval(samples, alpha=0.05) -> tuple:
     """Return the highest-density interval containing a (1-alpha) fraction of the samples."""
     samples_arr = np.asarray(samples, dtype=np.float64)
     return _highest_density_interval_array(samples_arr, alpha)
